@@ -78,7 +78,7 @@ https://notify.example.com/YOUR_NOTIFY_KEY/标题/副标题/正文
 
 也支持 `POST /YOUR_NOTIFY_KEY` 和 `POST /push` 的 JSON、URL 编码表单及 multipart 文本字段。[参数与示例](docs/api.md#bark-兼容)。
 
-`ALLOW_QUERY_AUTH=false` 时，路径密钥和 `device_key` 均停用，需要提供 Bearer 请求头。音效、图标、分组、角标和自动复制等 iOS 参数被忽略；`url` 会附在正文末尾。
+`ALLOW_QUERY_AUTH=false` 时，路径密钥和 `device_key` 均停用，需要提供 Bearer 请求头。标题加粗、副标题斜体，`group` 显示为分组标签。`icon` 可使用 emoji；图片 URL 显示为可点击的 🖼 图标。`url` 显示为详情链接。音效、角标和自动复制等 iOS 参数被忽略。
 
 ## 文档
 
@@ -88,7 +88,7 @@ https://notify.example.com/YOUR_NOTIFY_KEY/标题/副标题/正文
 <summary>功能与使用限制</summary>
 
 - 支持标题、正文、群组话题和静默通知。
-- 仅支持纯文本；每次最多 16000 个 UTF-16 单元，单条最多 4096 个。
+- 原生接口发送纯文本，Bark 接口自动排版；每次最多 16000 个 UTF-16 单元，单条最多 4096 个。
 - 默认每个 Cloudflare 节点每分钟约 20 次已鉴权请求、20 条发送消息。限额为近似计数。
 - 仅开放通知所需的 `getMe` 与 `sendMessage`，接口范围详见接口文档。
 - 请求体上限 64 KiB，上游请求超时 10 秒。失败后不自动重试，以避免重复通知。

@@ -464,7 +464,7 @@ test('Bark POST supports JSON and forms on key paths and push', async () => {
       success(upstream, (data, options) => {
         assert.equal(
           data.text,
-          'Title\nSubtitle\nText\nhttps://example.com/task',
+          '🖼 Title\nSubtitle\nText\n\n🏷 tasks\n🔗 https://example.com/task',
         );
         assert.equal(data.chat_id, chat);
         assert.equal(options.body.includes(key), false);
@@ -678,4 +678,166 @@ test('Bark and native routes share the authenticated request rate limit', async 
   assert.equal(response.status, 429);
   assert.equal(response.headers.get('retry-after'), '60');
   assert.equal((await response.json()).message, 'Request rate limit exceeded');
+});
+
+test('Bark layout styles headers and group while keeping Markdown-like body literal', async () => {
+  const { mf, upstream, mock } = setup();
+  const fields = {
+    device_key: key,
+    title: '部署 <成功>',
+    subtitle: '状态 _正常_',
+    body: '**literal** _name_ [text](url) <b>tag</b> & 😀',
+    icon: '🚀',
+    group: '服务_监控',
+    url: 'https://example.com/a?x=1&y=2',
+  };
+  success(upstream, (data) => {
+    assert.equal(
+      data.text,
+      `🚀 ${fields.title}\n${fields.subtitle}\n${fields.body}\n\n🏷 ${fields.group}\n🔗 ${fields.url}`,
+    );
+    assert.deepEqual(data.entities, [
+      { type: 'bold', offset: 3, length: fields.title.length },
+      {
+        type: 'italic',
+        offset: data.text.indexOf(fields.subtitle),
+        length: fields.subtitle.length,
+      },
+      {
+        type: 'code',
+        offset: data.text.indexOf(fields.group),
+        length: fields.group.length,
+      },
+      {
+        type: 'text_link',
+        offset: data.text.indexOf(fields.url),
+        length: fields.url.length,
+        url: fields.url,
+      },
+    ]);
+    assert.equal(data.parse_mode, undefined);
+    assert.deepEqual(data.link_preview_options, { is_disabled: true });
+    assert.equal(data.icon, undefined);
+    assert.equal(data.group, undefined);
+  });
+  assert.equal((await barkPost(mf, '/push', fields)).status, 200);
+  mock.assertNoPendingInterceptors();
+});
+
+test('Bark layout turns an image icon into a link without fetching it', async () => {
+  const { mf, upstream, mock } = setup();
+  const icon = 'https://example.com/icon.png';
+  success(upstream, (data) => {
+    assert.equal(data.text, '🖼 标题\n内容');
+    assert.deepEqual(data.entities, [
+      { type: 'text_link', offset: 0, length: '🖼'.length, url: icon },
+      { type: 'bold', offset: '🖼 '.length, length: 2 },
+    ]);
+    assert.equal(data.chat_id, chat);
+    assert.equal(JSON.stringify(data).includes(key), false);
+  });
+  const params = new URLSearchParams({ icon });
+  assert.equal(
+    (
+      await mf.dispatchFetch(
+        `https://notify.example/${key}/标题/内容?${params}`,
+      )
+    ).status,
+    200,
+  );
+  mock.assertNoPendingInterceptors();
+});
+
+test('Bark layout preserves entity offsets and compound emoji across title splits', async () => {
+  const { mf, upstream, mock } = setup();
+  const fields = {
+    device_key: key,
+    title: 'T'.repeat(4100),
+    subtitle: '👨‍👩‍👧‍👦',
+    body: 'body _literal_',
+    icon: '🧪',
+  };
+  const messages = [];
+  for (let i = 0; i < 2; i++) success(upstream, (data) => messages.push(data));
+  const response = await barkPost(mf, '/push', fields);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).sent, 2);
+  assert.equal(
+    messages.map((m) => m.text).join(''),
+    `🧪 ${fields.title}\n${fields.subtitle}\n${fields.body}`,
+  );
+  assert.deepEqual(messages[0].entities, [
+    { type: 'bold', offset: 3, length: 4093 },
+  ]);
+  assert.deepEqual(messages[1].entities, [
+    { type: 'bold', offset: 0, length: 7 },
+    { type: 'italic', offset: 8, length: fields.subtitle.length },
+  ]);
+  assert.ok(messages.every((m) => m.text.length <= 4096));
+  mock.assertNoPendingInterceptors();
+});
+
+test('Bark layout clips group and link entities to their own message segment', async () => {
+  for (const metadata of [
+    { group: 'g'.repeat(128) },
+    { url: 'https://example.com/path' },
+  ]) {
+    const { mf, upstream, mock } = setup();
+    const messages = [];
+    for (let i = 0; i < 2; i++)
+      success(upstream, (data) => messages.push(data));
+    assert.equal(
+      (
+        await barkPost(mf, '/push', {
+          device_key: key,
+          body: 'x'.repeat(4084),
+          ...metadata,
+        })
+      ).status,
+      200,
+    );
+    const entities = messages.flatMap((m) => m.entities);
+    assert.equal(entities.length, 2);
+    assert.ok(entities.every((e) => e.length > 0));
+    for (const message of messages) {
+      assert.ok(message.text.length <= 4096);
+      for (const entity of message.entities)
+        assert.ok(entity.offset + entity.length <= message.text.length);
+    }
+    const rendered = messages
+      .map((m) =>
+        m.entities
+          .map((e) => m.text.slice(e.offset, e.offset + e.length))
+          .join(''),
+      )
+      .join('');
+    assert.equal(rendered, metadata.group ?? metadata.url);
+    if (metadata.url) assert.ok(entities.every((e) => e.url === metadata.url));
+    mock.assertNoPendingInterceptors();
+  }
+});
+
+test('Bark layout validates metadata and rejects raw caller formatting', async () => {
+  const { mf } = setup();
+  for (const extra of [
+    { group: 1 },
+    { group: 'x'.repeat(129) },
+    { icon: [] },
+    { icon: 'x'.repeat(33) },
+    { icon: 'javascript:alert(1)' },
+    { icon: 'https://%' },
+    { title: 1 },
+    { parse_mode: 'MarkdownV2' },
+    { entities: [{ type: 'bold', offset: 0, length: 1 }] },
+  ])
+    assert.equal(
+      (
+        await barkPost(mf, '/push', {
+          device_key: key,
+          body: 'hello',
+          ...extra,
+        })
+      ).status,
+      400,
+    );
 });

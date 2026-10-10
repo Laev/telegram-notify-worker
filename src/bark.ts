@@ -1,4 +1,5 @@
 import { HttpError, readFields, readParameters } from './http';
+import type { FormattedMessage, MessageEntity } from './message';
 
 export function matchBarkRoute(pathname: string) {
   if (pathname === '/push') return { parts: [] as string[], methods: ['POST'] };
@@ -55,33 +56,97 @@ export async function readBarkFields(
   return fields;
 }
 
-export function normalizeBarkFields(fields: Record<string, unknown>) {
+function httpUrl(value: unknown, field: string) {
+  if (typeof value === 'string' && value.length <= 2048) {
+    try {
+      if (['https:', 'http:'].includes(new URL(value).protocol)) return value;
+    } catch {
+      // Use a stable field error rather than exposing URL parser details.
+    }
+  }
+  throw new HttpError(
+    400,
+    `${field} must be an HTTP or HTTPS URL of at most 2048 characters`,
+  );
+}
+
+export function formatBarkMessage(
+  fields: Record<string, unknown>,
+): FormattedMessage {
   if (fields.device_keys !== undefined)
     throw new HttpError(400, 'Batch recipients are not supported');
   if (typeof fields.body !== 'string' || !fields.body.trim()) {
     throw new HttpError(400, 'body must be a non-empty string');
   }
+  if (fields.title !== undefined && typeof fields.title !== 'string') {
+    throw new HttpError(400, 'title must be a string');
+  }
   if (fields.subtitle !== undefined && typeof fields.subtitle !== 'string') {
     throw new HttpError(400, 'subtitle must be a string');
   }
-  if (fields.url !== undefined) {
-    try {
-      if (
-        typeof fields.url !== 'string' ||
-        !['https:', 'http:'].includes(new URL(fields.url).protocol)
-      ) {
-        throw new Error('Invalid URL');
+  if (
+    fields.group !== undefined &&
+    (typeof fields.group !== 'string' || fields.group.length > 128)
+  ) {
+    throw new HttpError(
+      400,
+      'group must be a string of at most 128 UTF-16 units',
+    );
+  }
+  const url = fields.url !== undefined ? httpUrl(fields.url, 'url') : undefined;
+  let icon = '';
+  let iconUrl: string | undefined;
+  if (fields.icon !== undefined) {
+    if (typeof fields.icon !== 'string')
+      throw new HttpError(400, 'icon must be a string');
+    if (/^[a-z][a-z0-9+.-]*:/i.test(fields.icon)) {
+      iconUrl = httpUrl(fields.icon, 'icon');
+      icon = '🖼';
+    } else {
+      if (fields.icon.length > 32 || /[\r\n]/.test(fields.icon)) {
+        throw new HttpError(
+          400,
+          'icon must be an emoji or a short label of at most 32 UTF-16 units',
+        );
       }
-    } catch {
-      throw new HttpError(400, 'url must be an HTTP or HTTPS URL');
+      icon = fields.icon.trim();
     }
   }
-  return {
-    ...fields,
-    text: [fields.subtitle, fields.body, fields.url]
-      .filter((part) => part !== undefined && part !== '')
-      .join('\n'),
-  };
+  const message: FormattedMessage = { text: '', entities: [] };
+  function append(text: string, type?: MessageEntity['type'], link?: string) {
+    if (type && text.length)
+      message.entities.push({
+        type,
+        offset: message.text.length,
+        length: text.length,
+        ...(link ? { url: link } : {}),
+      });
+    message.text += text;
+  }
+  if (icon) {
+    append(icon, iconUrl ? 'text_link' : undefined, iconUrl);
+    append(' ');
+  }
+  if (fields.title) {
+    append(fields.title, 'bold');
+    append('\n');
+  }
+  if (fields.subtitle) {
+    append(fields.subtitle, 'italic');
+    append('\n');
+  }
+  append(fields.body);
+  if (fields.group || url) append('\n\n');
+  if (fields.group) {
+    append('🏷 ');
+    append(fields.group, 'code');
+    if (url) append('\n');
+  }
+  if (url) {
+    append('🔗 ');
+    append(url, 'text_link', url);
+  }
+  return message;
 }
 
 export async function barkResponse(response: Response) {

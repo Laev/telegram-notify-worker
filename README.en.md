@@ -78,7 +78,7 @@ https://notify.example.com/YOUR_NOTIFY_KEY/title/subtitle/body
 
 `POST /YOUR_NOTIFY_KEY` and `POST /push` also accept JSON, URL-encoded forms, and multipart text fields. See [parameters and examples](docs/api.en.md#bark-compatibility).
 
-When `ALLOW_QUERY_AUTH=false`, path keys and `device_key` are disabled; supply a Bearer header. iOS options such as sound, icon, group, badge, and automatic copying are ignored. `url` is appended to the message text.
+When `ALLOW_QUERY_AUTH=false`, path keys and `device_key` are disabled; supply a Bearer header. Titles are bold, subtitles italic, and `group` appears as a label. `icon` accepts emoji; an image URL becomes a clickable 🖼 icon. `url` appears as a detail link. Sound, badges, and automatic copying are ignored.
 
 ## Documentation
 
@@ -88,7 +88,7 @@ When `ALLOW_QUERY_AUTH=false`, path keys and `device_key` are disabled; supply a
 <summary>Features and limits</summary>
 
 - Supports titles, message text, group topics, and silent notifications.
-- Plain text only. Each request accepts up to 16000 UTF-16 code units; each message accepts up to 4096.
+- Native endpoints send plain text; Bark endpoints add automatic layout. Each request accepts up to 16000 UTF-16 code units; each message accepts up to 4096.
 - Defaults to roughly 20 authenticated requests and 20 outgoing messages per minute per Cloudflare location. Rate limits use approximate counters.
 - Exposes only `getMe` and `sendMessage` for notifications. See the API documentation for the supported routes.
 - Request bodies are limited to 64 KiB. Upstream requests time out after 10 seconds. Failed sends are not retried automatically to avoid duplicate notifications.

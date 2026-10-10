@@ -51,7 +51,7 @@ curl https://notify.example.com/sendMessage \
 | `message_thread_id`    | 可选，群组话题的正整数 ID                           |
 | `disable_notification` | 可选布尔值，静默发送                                |
 
-仅支持纯文本。标题和正文合计上限 16000 个 UTF-16 单元，单条最多 4096 个单元，超过时顺序拆分，保持内容与 emoji 完整。POST 请求体上限 64 KiB。上游请求超时为 10 秒。
+原生通知接口发送纯文本；Bark 兼容接口使用下文的自动排版。标题和正文合计上限 16000 个 UTF-16 单元，单条最多 4096 个单元，超过时顺序拆分，保持内容与 emoji 完整。POST 请求体上限 64 KiB。上游请求超时为 10 秒。
 
 `/api/*` 是适用于通知的受限接口，并非完整 Bot API 的透明替代：只开放 `getMe` 和 `sendMessage`，固定接收人，成功发送只返回分段计数。文件上传、任意 Bot Token 路径、Webhook 管理和格式化文本均未实现。
 
@@ -80,10 +80,20 @@ curl https://notify.example.com/YOUR_NOTIFY_KEY \
 
 curl https://notify.example.com/push \
   -H 'Content-Type: application/json' \
-  --data '{"device_key":"YOUR_NOTIFY_KEY","title":"任务通知","subtitle":"执行结果","body":"任务已完成","url":"https://example.com/task"}'
+  --data '{"device_key":"YOUR_NOTIFY_KEY","title":"任务通知","subtitle":"执行结果","body":"任务已完成","icon":"🚀","group":"任务监控","url":"https://example.com/task"}'
 ```
 
-`title`、`subtitle`、`body` 按顺序以换行连接。`url` 接受 HTTP/HTTPS 地址并附在正文末尾。标题与正文合计仍遵守 16000 个 UTF-16 单元限制，并复用既有限流和长消息分段逻辑。`chat_id`、话题和静默通知扩展字段也遵守上文的校验。
+`title` 加粗、`subtitle` 斜体，`body` 保持原文。正文里的 Markdown 或 HTML 符号不会被当作排版指令，调用方仍不传 `parse_mode` 或 `entities`。
+
+| 字段    | Telegram 展示                                            | 限制                                                 |
+| ------- | -------------------------------------------------------- | ---------------------------------------------------- |
+| `group` | 正文下方的 `🏷 分组名称`，名称使用等宽字体，方便搜索      | 最多 128 个 UTF-16 单元                              |
+| `icon`  | emoji 或短标签放在标题前；图片 URL 显示为可点击的 🖼 图标 | 标签最多 32 个 UTF-16 单元、单行；URL 最多 2048 字符 |
+| `url`   | 正文下方的 `🔗 详情地址`                                 | HTTP/HTTPS，最多 2048 字符                           |
+
+图片图标链接仅供点击查看，Worker 不下载图片、不发送照片；链接预览关闭。`group` 是消息里的视觉标签；群组话题仍使用 `message_thread_id`。
+
+排版后的全部可见文本（包括图标、标签、链接和换行）合计最多 16000 个 UTF-16 单元。长消息分段时保留粗体、斜体和链接，并重新计算每段的文本实体位置。复用既有限流逻辑；`chat_id`、话题和静默通知扩展字段遵守上文的校验。
 
 路径字段优先于其他字段。JSON 请求中查询参数优先于请求体；URL 编码表单与 multipart 请求中请求体优先于查询参数。路径正文中的裸 `+` 按 Bark 约定解析为空格，字面加号应写为 `%2B`，斜杠应写为 `%2F`；每个字段只解码一次。
 
@@ -91,4 +101,4 @@ Bearer 请求头优先，错误的请求头不会回退到路径或正文密钥�
 
 成功返回 Bark 风格的 `{"code":200,"message":"success","timestamp":...,"sent":1}`。失败保留真实 HTTP 状态码，`code` 与其一致；`sent` 和 `Retry-After` 保留已发送分段数与重试等待时间。
 
-`sound`、`icon`、`group`、`badge`、`level`、`volume`、`automaticallyCopy`、`copy`、`isArchive` 等 iOS 展示参数会被忽略。Bark App 的设备注册、APNs 推送及加密消息解密未实现。
+`sound`、`badge`、`level`、`volume`、`automaticallyCopy`、`copy`、`isArchive` 等 iOS 展示参数会被忽略。Bark App 的设备注册、APNs 推送及加密消息解密未实现。

@@ -51,7 +51,7 @@ Supported fields:
 | `message_thread_id`    | Optional positive integer ID of a group topic           |
 | `disable_notification` | Optional boolean for silent delivery                    |
 
-Only plain text is supported. The title and text together may contain up to 16000 UTF-16 code units. Longer text is sent in order as messages of up to 4096 code units, preserving content and compound emoji. POST bodies are limited to 64 KiB. Upstream requests time out after 10 seconds.
+Native notification endpoints send plain text; Bark endpoints use the automatic layout below. The title and text together may contain up to 16000 UTF-16 code units. Longer text is sent in order as messages of up to 4096 code units, preserving content and compound emoji. POST bodies are limited to 64 KiB. Upstream requests time out after 10 seconds.
 
 The `/api/*` routes provide a limited notification interface. They expose `getMe` and `sendMessage`, use a fixed recipient, and return a segment count for successful sends. File uploads, arbitrary bot token paths, webhook management, and formatted text are not implemented.
 
@@ -80,10 +80,20 @@ curl https://notify.example.com/YOUR_NOTIFY_KEY \
 
 curl https://notify.example.com/push \
   -H 'Content-Type: application/json' \
-  --data '{"device_key":"YOUR_NOTIFY_KEY","title":"Task notification","subtitle":"Result","body":"Task completed","url":"https://example.com/task"}'
+  --data '{"device_key":"YOUR_NOTIFY_KEY","title":"Task notification","subtitle":"Result","body":"Task completed","icon":"🚀","group":"Tasks","url":"https://example.com/task"}'
 ```
 
-`title`, `subtitle`, and `body` are joined in order with newlines. `url` accepts an HTTP/HTTPS address and is appended to the message text. The combined content still follows the 16000 UTF-16 code unit limit, existing rate limits, and long message splitting. The `chat_id`, topic, and silent delivery extension fields use the validation described above.
+`title` is bold, `subtitle` is italic, and `body` stays literal. Markdown and HTML characters in the body remain text. Caller-supplied `parse_mode` and `entities` are still rejected.
+
+| Field   | Telegram display                                                                 | Limit                                                           |
+| ------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `group` | A `🏷 Group name` label below the body, with a monospace name for searching       | 128 UTF-16 code units                                           |
+| `icon`  | Emoji or a short label before the title; an image URL becomes a clickable 🖼 icon | Single-line labels: 32 UTF-16 code units; URLs: 2048 characters |
+| `url`   | A `🔗 Detail URL` link below the body                                            | HTTP/HTTPS, 2048 characters                                     |
+
+Image icons are links to view the image. The Worker does not download images or send photos; link previews are disabled. `group` is a visual label in the message. Use `message_thread_id` for Telegram topics.
+
+All visible text after layout, including icons, labels, links, and newlines, shares the 16000 UTF-16 code unit limit. Long messages retain styles and links with entity offsets recalculated for each segment. Existing rate limits apply; `chat_id`, topic, and silent delivery fields follow the validation above.
 
 Path fields take precedence over other fields. For JSON requests, query parameters take precedence over body fields. For URL-encoded and multipart forms, body fields take precedence over query parameters. A bare `+` in a message path segment becomes a space, as in Bark; encode a literal plus as `%2B` and a slash as `%2F`. Each field is decoded once.
 
@@ -91,4 +101,4 @@ The Bearer header takes precedence. An invalid header never falls back to a path
 
 Success uses the Bark response format: `{"code":200,"message":"success","timestamp":...,"sent":1}`. Failures retain their HTTP status, with a matching `code`; `sent` and `Retry-After` preserve partial delivery counts and retry delays.
 
-iOS display fields such as `sound`, `icon`, `group`, `badge`, `level`, `volume`, `automaticallyCopy`, `copy`, and `isArchive` are ignored. Bark App device registration, APNs delivery, and encrypted message decryption are not implemented.
+iOS display fields such as `sound`, `badge`, `level`, `volume`, `automaticallyCopy`, `copy`, and `isArchive` are ignored. Bark App device registration, APNs delivery, and encrypted message decryption are not implemented.

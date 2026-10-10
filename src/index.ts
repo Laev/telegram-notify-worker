@@ -2,9 +2,10 @@ import { HttpError, json, readBody, readFields } from './http';
 import {
   barkResponse,
   matchBarkRoute,
-  normalizeBarkFields,
+  formatBarkMessage,
   readBarkFields,
 } from './bark';
+import { sliceEntities, type FormattedMessage } from './message';
 
 const MAX_TEXT_LENGTH = 16_000;
 const MESSAGE_LENGTH = 4096;
@@ -170,11 +171,17 @@ async function callTelegram(
   return { error: false as const, result: data.result };
 }
 
-async function sendMessages(fields: Record<string, unknown>, env: Env) {
+async function sendMessages(
+  fields: Record<string, unknown>,
+  env: Env,
+  formatted?: FormattedMessage,
+) {
   if (fields.chat_id !== undefined && String(fields.chat_id) !== env.CHAT_ID) {
     throw new HttpError(400, 'chat_id differs from the configured recipient');
   }
-  const text = getText(fields);
+  const text = getText(
+    formatted ? { ...fields, title: undefined, text: formatted.text } : fields,
+  );
   const thread = fields.message_thread_id;
   if (
     thread !== undefined &&
@@ -190,6 +197,7 @@ async function sendMessages(fields: Record<string, unknown>, env: Env) {
     throw new HttpError(400, 'disable_notification must be a boolean');
   }
   let sent = 0;
+  let offset = 0;
   for (const part of splitText(text)) {
     const { success } = await env.SEND_LIMITER.limit({ key: 'messages' });
     if (!success) {
@@ -206,6 +214,16 @@ async function sendMessages(fields: Record<string, unknown>, env: Env) {
         {
           chat_id: env.CHAT_ID,
           text: part,
+          ...(formatted
+            ? {
+                entities: sliceEntities(
+                  formatted.entities,
+                  offset,
+                  part.length,
+                ),
+                link_preview_options: { is_disabled: true },
+              }
+            : {}),
           disable_notification: silent === true || silent === 'true',
           ...(thread !== undefined
             ? { message_thread_id: Number(thread) }
@@ -226,6 +244,7 @@ async function sendMessages(fields: Record<string, unknown>, env: Env) {
       );
     }
     sent++;
+    offset += part.length;
   }
   return json({ ok: true, sent });
 }
@@ -253,7 +272,8 @@ export default {
         await authenticate(request, url, env, fields.device_key);
         const limited = await checkRequestLimit(env);
         return await barkResponse(
-          limited ?? (await sendMessages(normalizeBarkFields(fields), env)),
+          limited ??
+            (await sendMessages(fields, env, formatBarkMessage(fields))),
         );
       }
       if (
