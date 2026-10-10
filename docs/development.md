@@ -43,6 +43,8 @@ npm run verify
 
 自定义日志不包含密钥、正文、聊天 ID、请求地址或错误原文。自动 invocation logs 保持关闭，同时启用查询字符串脱敏。日志由 Cloudflare 保存，不新增数据库或外部日志服务。
 
+以上限制针对应用写入的摘要。Cloudflare 实时调试仍会附带请求元数据；查询字符串脱敏不覆盖路径。含密钥或正文的 Bark 路径会出现在实时调试中，敏感通知建议使用 `POST /push`，通过请求体传正文和 `device_key`，或使用 Bearer 请求头。
+
 [Workers Logs 免费计划](https://developers.cloudflare.com/workers/observability/logs/workers-logs/#pricing)每天包含 200,000 条日志，保留 3 天；额度按账户共享。本项目每次请求写一条日志，采样率为 100%。
 
 ## 回滚

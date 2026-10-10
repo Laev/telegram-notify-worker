@@ -43,6 +43,8 @@ Open the Worker in the Cloudflare dashboard → Observability → Logs and filte
 
 Custom logs exclude credentials, notification content, chat IDs, request URLs, and raw errors. Automatic invocation logs stay disabled, and query-string redaction is enabled. Cloudflare stores the logs; no database or external logging service is added.
 
+These exclusions apply to the application summary. Cloudflare real-time debugging still includes request metadata; query-string redaction does not cover paths. Bark paths containing keys or notification text appear in real-time debugging. For sensitive notifications, use `POST /push` with content and `device_key` in the body, or use a Bearer header.
+
 The [Workers Logs Free plan](https://developers.cloudflare.com/workers/observability/logs/workers-logs/#pricing) includes 200,000 logs per day with 3-day retention, shared across the account. This project writes one log per request with 100% sampling.
 
 ## Rollback
