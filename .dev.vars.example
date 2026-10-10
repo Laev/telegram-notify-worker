@@ -1,0 +1,3 @@
+BOT_TOKEN="replace-with-your-bot-token"
+CHAT_ID="replace-with-your-chat-id"
+NOTIFY_KEY="replace-with-a-random-key-at-least-32-characters"

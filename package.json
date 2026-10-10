@@ -1,0 +1,51 @@
+{
+  "name": "telegram-notify-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Authenticated Telegram notifications on Cloudflare Workers",
+  "license": "Apache-2.0",
+  "author": "Laev",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "check": "tsc --noEmit",
+    "build": "esbuild src/index.ts --bundle --format=esm --platform=browser --outfile=dist/worker.js",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "npm run check && npm run format:check && npm test && wrangler deploy --dry-run"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "miniflare": "^5.20261006.1-alpha",
+    "prettier": "^3.9.9",
+    "typescript": "^7.0.2",
+    "undici": "^8.11.2",
+    "wrangler": "^4.149.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "BOT_TOKEN": {
+        "description": "从 [@BotFather](https://t.me/BotFather) 创建机器人并获取 Token。"
+      },
+      "CHAT_ID": {
+        "description": "接收消息的数字聊天 ID。私聊请先向机器人发送 /start；群组请先加入机器人。"
+      },
+      "NOTIFY_KEY": {
+        "description": "独立随机访问密钥，32–512 字符且不含空白。可用 openssl rand -hex 32 生成。"
+      },
+      "ALLOW_QUERY_AUTH": {
+        "description": "true 允许 GET 地址使用 key 参数；false 仅接受 Bearer 请求头。"
+      },
+      "SEND_LIMITER": {
+        "description": "限制每个 Cloudflare 节点的请求和消息数量。"
+      }
+    }
+  }
+}

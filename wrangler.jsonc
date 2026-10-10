@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "telegram-notify-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ALLOW_QUERY_AUTH": "true",
+  },
+  "ratelimits": [
+    {
+      "name": "SEND_LIMITER",
+      "namespace_id": "22022",
+      "simple": {
+        "limit": 20,
+        "period": 60,
+      },
+    },
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false,
+    },
+  },
+  "secrets": {
+    "required": ["BOT_TOKEN", "CHAT_ID", "NOTIFY_KEY"],
+  },
+}
