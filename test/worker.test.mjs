@@ -724,6 +724,52 @@ test('Bark layout styles headers and group while keeping Markdown-like body lite
   mock.assertNoPendingInterceptors();
 });
 
+test('Bark layout keeps optional headers and icon-only spacing predictable', async () => {
+  const cases = [
+    [{ title: '标题', subtitle: '副标题' }, '标题\n副标题\n\n正文'],
+    [{ title: '标题' }, '标题\n\n正文'],
+    [{ subtitle: '副标题' }, '副标题\n\n正文'],
+    [{}, '正文'],
+    [{ title: '', subtitle: '' }, '正文'],
+    [{ icon: '🚀' }, '🚀\n正文'],
+    [{ icon: '🚀', title: '标题' }, '🚀 标题\n\n正文'],
+    [{ icon: '🚀', subtitle: '副标题' }, '🚀 副标题\n\n正文'],
+    [{ icon: 'https://example.com/image.png' }, '🖼\n正文'],
+  ];
+  for (const [headers, expected] of cases) {
+    const { mf, upstream, mock } = setup();
+    success(upstream, (data) => {
+      assert.equal(data.text, expected);
+      const entities = [];
+      if (headers.icon?.startsWith('https:'))
+        entities.push({
+          type: 'text_link',
+          offset: 0,
+          length: 2,
+          url: headers.icon,
+        });
+      if (headers.title)
+        entities.push({
+          type: 'bold',
+          offset: expected.indexOf(headers.title),
+          length: headers.title.length,
+        });
+      assert.deepEqual(data.entities, entities);
+    });
+    assert.equal(
+      (
+        await barkPost(mf, '/push', {
+          device_key: key,
+          body: '正文',
+          ...headers,
+        })
+      ).status,
+      200,
+    );
+    mock.assertNoPendingInterceptors();
+  }
+});
+
 test('Bark layout turns an image icon into a link without fetching it', async () => {
   const { mf, upstream, mock } = setup();
   const icon = 'https://example.com/icon.png';

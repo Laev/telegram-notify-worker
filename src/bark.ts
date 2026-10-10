@@ -125,7 +125,7 @@ export function formatBarkMessage(
   }
   if (icon) {
     append(icon, iconUrl ? 'text_link' : undefined, iconUrl);
-    append(' ');
+    append(fields.title || fields.subtitle ? ' ' : '\n');
   }
   if (fields.title) {
     append(fields.title, 'bold');

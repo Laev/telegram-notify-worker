@@ -78,7 +78,7 @@ https://notify.example.com/YOUR_NOTIFY_KEY/标题/副标题/正文
 
 也支持 `POST /YOUR_NOTIFY_KEY` 和 `POST /push` 的 JSON、URL 编码表单及 multipart 文本字段。[参数与示例](docs/api.md#bark-兼容)。
 
-`ALLOW_QUERY_AUTH=false` 时，路径密钥和 `device_key` 均停用，需要提供 Bearer 请求头。标题加粗、副标题使用常规字体，标题区与正文之间空一行，`group` 显示为分组标签。`icon` 可使用 emoji；图片 URL 显示为可点击的 🖼 图标。`url` 显示为简短域名链接。音效、角标和自动复制等 iOS 参数被忽略。
+`ALLOW_QUERY_AUTH=false` 时，路径密钥和 `device_key` 均停用，需要提供 Bearer 请求头。标题加粗、副标题使用常规字体，标题区与正文之间空一行，`group` 显示为分组标签。`icon` 可使用 emoji；图片 URL 显示为可点击的 🖼 图标。只有图标时，图标单独一行，下一行直接显示正文；没有标题、副标题和图标时，正文从首行开始。`url` 显示为简短域名链接。音效、角标和自动复制等 iOS 参数被忽略。
 
 ## 文档
 

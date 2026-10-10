@@ -91,6 +91,8 @@ curl https://notify.example.com/push \
 | `icon`  | Emoji or a short label before the title; an image URL becomes a clickable 🖼 icon | Single-line labels: 32 UTF-16 code units; URLs: 2048 characters |
 | `url`   | A `🔗 Target hostname` link below the body                                       | HTTP/HTTPS, 2048 characters                                     |
 
+A subtitle is followed by a blank line before the body. With only a title, that title is followed by a blank line. With neither header, the body starts on the first line; if an icon is supplied, it occupies its own line immediately above the body. Messages contain only the supplied content, with no fixed links or promotional text.
+
 Image icons are links to view the image. The Worker does not download images or send photos; link previews are disabled. `group` is a visual label in the message. Use `message_thread_id` for Telegram topics.
 
 All visible text after layout, including icons, labels, links, and newlines, shares the 16000 UTF-16 code unit limit. Long messages retain styles and links with entity offsets recalculated for each segment. Existing rate limits apply; `chat_id`, topic, and silent delivery fields follow the validation above.
