@@ -1,5 +1,7 @@
 # 开发与维护
 
+[简体中文](development.md) | [English](development.en.md) · [返回首页](../README.md)
+
 ## 命令行部署
 
 需要 Node.js 22 或更新版本。

@@ -1,5 +1,7 @@
 # Telegram Notify Worker — 轻量 Telegram 通知服务
 
+[简体中文](README.md) | [English](README.en.md)
+
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue)](LICENSE)
 [![Check](https://github.com/Laev/telegram-notify-worker/actions/workflows/check.yml/badge.svg)](https://github.com/Laev/telegram-notify-worker/actions/workflows/check.yml)
@@ -20,6 +22,8 @@
 
 在 Telegram 中联系 [@BotFather](https://t.me/BotFather)，使用 `/newbot` 创建机器人。向新机器人发送 `/start`，让它可以向你发送消息。
 
+三个 Secret 均为必填。`CHAT_ID` 用来固定本实例的接收人，发送请求时可以省略 `chat_id`；如果传入，则必须与配置值相同。
+
 | Secret       | 填写内容                                      |
 | ------------ | --------------------------------------------- |
 | `BOT_TOKEN`  | BotFather 提供的机器人 Token                  |
@@ -27,6 +31,8 @@
 | `NOTIFY_KEY` | 自己生成的随机访问密钥，32–512 字符，不含空白 |
 
 `CHAT_ID` 可以从机器人的 [getUpdates](https://core.telegram.org/bots/api#getupdates) 响应中找到 `message.chat.id`。向群组推送时，先将机器人加入群组并允许它发送消息。
+
+`CHAT_ID` 缺失或格式错误时，通知接口返回 HTTP 503；请求指定其他 `chat_id` 时返回 HTTP 400。
 
 ### 2. 点击部署
 

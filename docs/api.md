@@ -1,5 +1,13 @@
 # 接口文档
 
+[简体中文](api.md) | [English](api.en.md) · [返回首页](../README.md)
+
+## 接收人配置
+
+Worker Secret 中的 `CHAT_ID` 必填，固定本实例的接收聊天。请求中的 `chat_id` 可省略；传入时必须与配置值相同。这样，持有通知密钥的客户端只能向配置的接收人发送消息。
+
+`CHAT_ID` 缺失或不是数字聊天 ID 时，业务接口（含 `/api/getMe`）返回 HTTP 503。请求指定其他 `chat_id` 时返回 HTTP 400。`/health` 仍只检查服务存活。
+
 ## 请求鉴权
 
 推荐在请求头中携带 `Authorization: Bearer YOUR_NOTIFY_KEY`。
