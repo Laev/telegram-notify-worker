@@ -83,13 +83,13 @@ curl https://notify.example.com/push \
   --data '{"device_key":"YOUR_NOTIFY_KEY","title":"Task notification","subtitle":"Result","body":"Task completed","icon":"🚀","group":"Tasks","url":"https://example.com/task"}'
 ```
 
-`title` is bold, `subtitle` is italic, and `body` stays literal. Markdown and HTML characters in the body remain text. Caller-supplied `parse_mode` and `entities` are still rejected.
+`title` is bold, `subtitle` uses regular text, and a blank line separates the header from the body. `body` stays literal. Markdown and HTML characters in the body remain text. Caller-supplied `parse_mode` and `entities` are still rejected.
 
 | Field   | Telegram display                                                                 | Limit                                                           |
 | ------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | `group` | A `🏷 Group name` label below the body, with a monospace name for searching       | 128 UTF-16 code units                                           |
 | `icon`  | Emoji or a short label before the title; an image URL becomes a clickable 🖼 icon | Single-line labels: 32 UTF-16 code units; URLs: 2048 characters |
-| `url`   | A `🔗 Detail URL` link below the body                                            | HTTP/HTTPS, 2048 characters                                     |
+| `url`   | A `🔗 Target hostname` link below the body                                       | HTTP/HTTPS, 2048 characters                                     |
 
 Image icons are links to view the image. The Worker does not download images or send photos; link previews are disabled. `group` is a visual label in the message. Use `message_thread_id` for Telegram topics.
 

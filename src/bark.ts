@@ -129,12 +129,12 @@ export function formatBarkMessage(
   }
   if (fields.title) {
     append(fields.title, 'bold');
-    append('\n');
+    if (fields.subtitle) append('\n');
   }
   if (fields.subtitle) {
-    append(fields.subtitle, 'italic');
-    append('\n');
+    append(fields.subtitle);
   }
+  if (fields.title || fields.subtitle) append('\n\n');
   append(fields.body);
   if (fields.group || url) append('\n\n');
   if (fields.group) {
@@ -144,7 +144,7 @@ export function formatBarkMessage(
   }
   if (url) {
     append('🔗 ');
-    append(url, 'text_link', url);
+    append(new URL(url).host, 'text_link', url);
   }
   return message;
 }

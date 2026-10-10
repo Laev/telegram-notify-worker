@@ -413,7 +413,10 @@ test('Bark GET paths support body, title and subtitle with encoded characters', 
   for (const parts of [[body], ['标题', body], ['标题', '副标题', body]]) {
     const { mf, upstream, mock } = setup();
     success(upstream, (data, options) => {
-      assert.equal(data.text, parts.join('\n'));
+      assert.equal(
+        data.text,
+        [parts.slice(0, -1).join('\n'), body].filter(Boolean).join('\n\n'),
+      );
       assert.equal(data.chat_id, chat);
       assert.equal(options.body.includes(key), false);
     });
@@ -433,7 +436,7 @@ test('Bark GET paths support body, title and subtitle with encoded characters', 
 
 test('Bark path text wins over query fields and preserves Bark plus decoding', async () => {
   const { mf, upstream } = setup();
-  success(upstream, (data) => assert.equal(data.text, 'A B+C\nURL body'));
+  success(upstream, (data) => assert.equal(data.text, 'A B+C\n\nURL body'));
   assert.equal(
     (
       await mf.dispatchFetch(
@@ -447,7 +450,7 @@ test('Bark path text wins over query fields and preserves Bark plus decoding', a
 test('Bark key-only URLs accept GET fields and bodyless POST paths', async () => {
   for (const method of ['GET', 'POST']) {
     const { mf, upstream } = setup();
-    success(upstream, (data) => assert.equal(data.text, '标题\n内容 + 中文'));
+    success(upstream, (data) => assert.equal(data.text, '标题\n\n内容 + 中文'));
     const params = new URLSearchParams({ title: '标题', body: '内容 + 中文' });
     const response = await mf.dispatchFetch(
       `https://notify.example/${key}?${params}`,
@@ -464,7 +467,7 @@ test('Bark POST supports JSON and forms on key paths and push', async () => {
       success(upstream, (data, options) => {
         assert.equal(
           data.text,
-          '🖼 Title\nSubtitle\nText\n\n🏷 tasks\n🔗 https://example.com/task',
+          '🖼 Title\nSubtitle\n\nText\n\n🏷 tasks\n🔗 example.com',
         );
         assert.equal(data.chat_id, chat);
         assert.equal(options.body.includes(key), false);
@@ -497,7 +500,9 @@ test('Bark POST supports JSON and forms on key paths and push', async () => {
 
 test('Bark POST path fields take precedence over the request body', async () => {
   const { mf, upstream } = setup();
-  success(upstream, (data) => assert.equal(data.text, 'Path title\nPath body'));
+  success(upstream, (data) =>
+    assert.equal(data.text, 'Path title\n\nPath body'),
+  );
   assert.equal(
     (
       await barkPost(mf, `/${key}/Path%20title/Path%20body`, {
@@ -637,7 +642,7 @@ test('Bark multipart fields work with bounded parsing; native routes stay unchan
       body: await request.text(),
     });
   }
-  success(upstream, (data) => assert.equal(data.text, '标题\n内容'));
+  success(upstream, (data) => assert.equal(data.text, '标题\n\n内容'));
   const fields = new FormData();
   fields.set('device_key', key);
   fields.set('title', '标题');
@@ -694,15 +699,10 @@ test('Bark layout styles headers and group while keeping Markdown-like body lite
   success(upstream, (data) => {
     assert.equal(
       data.text,
-      `🚀 ${fields.title}\n${fields.subtitle}\n${fields.body}\n\n🏷 ${fields.group}\n🔗 ${fields.url}`,
+      `🚀 ${fields.title}\n${fields.subtitle}\n\n${fields.body}\n\n🏷 ${fields.group}\n🔗 example.com`,
     );
     assert.deepEqual(data.entities, [
       { type: 'bold', offset: 3, length: fields.title.length },
-      {
-        type: 'italic',
-        offset: data.text.indexOf(fields.subtitle),
-        length: fields.subtitle.length,
-      },
       {
         type: 'code',
         offset: data.text.indexOf(fields.group),
@@ -710,8 +710,8 @@ test('Bark layout styles headers and group while keeping Markdown-like body lite
       },
       {
         type: 'text_link',
-        offset: data.text.indexOf(fields.url),
-        length: fields.url.length,
+        offset: data.text.indexOf('example.com'),
+        length: 'example.com'.length,
         url: fields.url,
       },
     ]);
@@ -728,7 +728,7 @@ test('Bark layout turns an image icon into a link without fetching it', async ()
   const { mf, upstream, mock } = setup();
   const icon = 'https://example.com/icon.png';
   success(upstream, (data) => {
-    assert.equal(data.text, '🖼 标题\n内容');
+    assert.equal(data.text, '🖼 标题\n\n内容');
     assert.deepEqual(data.entities, [
       { type: 'text_link', offset: 0, length: '🖼'.length, url: icon },
       { type: 'bold', offset: '🖼 '.length, length: 2 },
@@ -764,14 +764,13 @@ test('Bark layout preserves entity offsets and compound emoji across title split
   assert.equal((await response.json()).sent, 2);
   assert.equal(
     messages.map((m) => m.text).join(''),
-    `🧪 ${fields.title}\n${fields.subtitle}\n${fields.body}`,
+    `🧪 ${fields.title}\n${fields.subtitle}\n\n${fields.body}`,
   );
   assert.deepEqual(messages[0].entities, [
     { type: 'bold', offset: 3, length: 4093 },
   ]);
   assert.deepEqual(messages[1].entities, [
     { type: 'bold', offset: 0, length: 7 },
-    { type: 'italic', offset: 8, length: fields.subtitle.length },
   ]);
   assert.ok(messages.every((m) => m.text.length <= 4096));
   mock.assertNoPendingInterceptors();
@@ -811,7 +810,7 @@ test('Bark layout clips group and link entities to their own message segment', a
           .join(''),
       )
       .join('');
-    assert.equal(rendered, metadata.group ?? metadata.url);
+    assert.equal(rendered, metadata.group ?? new URL(metadata.url).host);
     if (metadata.url) assert.ok(entities.every((e) => e.url === metadata.url));
     mock.assertNoPendingInterceptors();
   }

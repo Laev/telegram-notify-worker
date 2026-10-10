@@ -78,7 +78,7 @@ https://notify.example.com/YOUR_NOTIFY_KEY/title/subtitle/body
 
 `POST /YOUR_NOTIFY_KEY` and `POST /push` also accept JSON, URL-encoded forms, and multipart text fields. See [parameters and examples](docs/api.en.md#bark-compatibility).
 
-When `ALLOW_QUERY_AUTH=false`, path keys and `device_key` are disabled; supply a Bearer header. Titles are bold, subtitles italic, and `group` appears as a label. `icon` accepts emoji; an image URL becomes a clickable 🖼 icon. `url` appears as a detail link. Sound, badges, and automatic copying are ignored.
+When `ALLOW_QUERY_AUTH=false`, path keys and `device_key` are disabled; supply a Bearer header. Titles are bold, subtitles use regular text, and a blank line separates the header from the body. `group` appears as a label. `icon` accepts emoji; an image URL becomes a clickable 🖼 icon. `url` appears as a short hostname link. Sound, badges, and automatic copying are ignored.
 
 ## Documentation
 
