@@ -10,6 +10,11 @@ import { sliceEntities, type FormattedMessage } from './message';
 const MAX_TEXT_LENGTH = 16_000;
 const MESSAGE_LENGTH = 4096;
 
+type RequestStats = {
+  route: 'health' | 'send_message' | 'get_me' | 'bark' | 'unknown';
+  sent: number;
+};
+
 async function authenticate(
   request: Request,
   url: URL,
@@ -174,6 +179,7 @@ async function callTelegram(
 async function sendMessages(
   fields: Record<string, unknown>,
   env: Env,
+  stats: RequestStats,
   formatted?: FormattedMessage,
 ) {
   if (fields.chat_id !== undefined && String(fields.chat_id) !== env.CHAT_ID) {
@@ -244,80 +250,101 @@ async function sendMessages(
       );
     }
     sent++;
+    stats.sent = sent;
     offset += part.length;
   }
   return json({ ok: true, sent });
 }
 
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    let bark = false;
-    try {
-      if (url.pathname === '/health' && request.method === 'GET') {
-        return json({ ok: true, service: 'telegram-notify-worker' });
-      }
-      const barkRoute = matchBarkRoute(url.pathname);
-      if (barkRoute) {
-        bark = true;
-        if (!barkRoute.methods.includes(request.method)) {
-          return barkResponse(
-            json({ ok: false, error: 'Method not allowed' }, 405, {
-              Allow: barkRoute.methods.join(', '),
-            }),
-          );
-        }
-        validateConfig(env);
-        const fields = await readBarkFields(request, url, barkRoute.parts);
-        await authenticate(request, url, env, fields.device_key);
-        const limited = await checkRequestLimit(env);
-        return await barkResponse(
-          limited ??
-            (await sendMessages(fields, env, formatBarkMessage(fields))),
+async function handleRequest(request: Request, env: Env, stats: RequestStats) {
+  const url = new URL(request.url);
+  let bark = false;
+  try {
+    if (url.pathname === '/health' && request.method === 'GET') {
+      stats.route = 'health';
+      return json({ ok: true, service: 'telegram-notify-worker' });
+    }
+    const barkRoute = matchBarkRoute(url.pathname);
+    if (barkRoute) {
+      bark = true;
+      stats.route = 'bark';
+      if (!barkRoute.methods.includes(request.method)) {
+        return barkResponse(
+          json({ ok: false, error: 'Method not allowed' }, 405, {
+            Allow: barkRoute.methods.join(', '),
+          }),
         );
-      }
-      if (
-        !['/sendMessage', '/api/sendMessage', '/api/getMe'].includes(
-          url.pathname,
-        )
-      ) {
-        throw new HttpError(404, 'Route not found');
-      }
-      const methods =
-        url.pathname === '/api/sendMessage' ? ['POST'] : ['GET', 'POST'];
-      if (!methods.includes(request.method)) {
-        return json({ ok: false, error: 'Method not allowed' }, 405, {
-          Allow: methods.join(', '),
-        });
       }
       validateConfig(env);
-      await authenticate(request, url, env);
+      const fields = await readBarkFields(request, url, barkRoute.parts);
+      await authenticate(request, url, env, fields.device_key);
       const limited = await checkRequestLimit(env);
-      if (limited) return limited;
-      if (url.pathname === '/api/getMe') {
-        const result = await callTelegram('getMe', {}, env);
-        if (result.error)
-          return json(
-            { ok: false, error: 'Telegram request rejected' },
-            result.status,
-            result.retryAfter
-              ? { 'Retry-After': String(result.retryAfter) }
-              : {},
-          );
-        return json({ ok: true, result: result.result });
-      }
-      return await sendMessages(await readFields(request, url), env);
-    } catch (error) {
-      if (error instanceof HttpError) {
-        const response = json(
-          { ok: false, error: error.message },
-          error.status,
+      return await barkResponse(
+        limited ??
+          (await sendMessages(fields, env, stats, formatBarkMessage(fields))),
+      );
+    }
+    if (
+      !['/sendMessage', '/api/sendMessage', '/api/getMe'].includes(url.pathname)
+    ) {
+      throw new HttpError(404, 'Route not found');
+    }
+    stats.route = url.pathname === '/api/getMe' ? 'get_me' : 'send_message';
+    const methods =
+      url.pathname === '/api/sendMessage' ? ['POST'] : ['GET', 'POST'];
+    if (!methods.includes(request.method)) {
+      return json({ ok: false, error: 'Method not allowed' }, 405, {
+        Allow: methods.join(', '),
+      });
+    }
+    validateConfig(env);
+    await authenticate(request, url, env);
+    const limited = await checkRequestLimit(env);
+    if (limited) return limited;
+    if (url.pathname === '/api/getMe') {
+      const result = await callTelegram('getMe', {}, env);
+      if (result.error)
+        return json(
+          { ok: false, error: 'Telegram request rejected' },
+          result.status,
+          result.retryAfter ? { 'Retry-After': String(result.retryAfter) } : {},
         );
-        return bark ? barkResponse(response) : response;
-      }
-      console.error(JSON.stringify({ event: 'request_failed' }));
-      const response = json({ ok: false, error: 'Internal server error' }, 500);
+      return json({ ok: true, result: result.result });
+    }
+    return await sendMessages(await readFields(request, url), env, stats);
+  } catch (error) {
+    if (error instanceof HttpError) {
+      const response = json({ ok: false, error: error.message }, error.status);
       return bark ? barkResponse(response) : response;
     }
+    const response = json({ ok: false, error: 'Internal server error' }, 500);
+    return bark ? barkResponse(response) : response;
+  }
+}
+
+export default {
+  async fetch(request, env) {
+    const started = performance.now();
+    const stats: RequestStats = { route: 'unknown', sent: 0 };
+    const response = await handleRequest(request, env, stats);
+    console.log({
+      event: 'request_completed',
+      route: stats.route,
+      method: [
+        'GET',
+        'POST',
+        'PUT',
+        'PATCH',
+        'DELETE',
+        'HEAD',
+        'OPTIONS',
+      ].includes(request.method)
+        ? request.method
+        : 'OTHER',
+      status: response.status,
+      duration_ms: Math.max(0, Math.round(performance.now() - started)),
+      sent: stats.sent,
+    });
+    return response;
   },
 } satisfies ExportedHandler<Env>;

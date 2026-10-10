@@ -37,6 +37,14 @@ npm run verify
 
 检查包括类型、格式、鉴权、固定接收人、GET 编码、分段、限流、上游错误和部署打包。实际部署后再用 `/health`、缺失鉴权请求、`/api/getMe` 和一条真实通知验证。
 
+## 调用日志
+
+在 Cloudflare 控制台打开 Worker → Observability → Logs，筛选 `event = request_completed`。每次请求记录一条摘要：`route`（接口类型）、`method`、`status`、`duration_ms` 和 `sent`（Telegram 已接受的消息条数）。分段发送中途失败时，`sent` 保留已成功的条数；它不表示用户已读。
+
+自定义日志不包含密钥、正文、聊天 ID、请求地址或错误原文。自动 invocation logs 保持关闭，同时启用查询字符串脱敏。日志由 Cloudflare 保存，不新增数据库或外部日志服务。
+
+[Workers Logs 免费计划](https://developers.cloudflare.com/workers/observability/logs/workers-logs/#pricing)每天包含 200,000 条日志，保留 3 天；额度按账户共享。本项目每次请求写一条日志，采样率为 100%。
+
 ## 回滚
 
 更新线上 Worker 前记录 `npx wrangler versions list` 中的版本 ID。需要恢复时：

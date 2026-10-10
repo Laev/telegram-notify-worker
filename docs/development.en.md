@@ -37,6 +37,14 @@ npm run verify
 
 Checks cover types, formatting, authentication, the fixed recipient, GET encoding, message splitting, rate limits, upstream errors, and deployment packaging. After an actual deployment, verify `/health`, a request without authentication, `/api/getMe`, and one real notification.
 
+## Call logs
+
+Open the Worker in the Cloudflare dashboard → Observability → Logs and filter by `event = request_completed`. Each request writes one summary with `route`, `method`, `status`, `duration_ms`, and `sent` (message parts accepted by Telegram). If a split message fails partway through, `sent` retains the successful count; it does not indicate that the recipient has read the message.
+
+Custom logs exclude credentials, notification content, chat IDs, request URLs, and raw errors. Automatic invocation logs stay disabled, and query-string redaction is enabled. Cloudflare stores the logs; no database or external logging service is added.
+
+The [Workers Logs Free plan](https://developers.cloudflare.com/workers/observability/logs/workers-logs/#pricing) includes 200,000 logs per day with 3-day retention, shared across the account. This project writes one log per request with 100% sampling.
+
 ## Rollback
 
 Before updating a live Worker, record its version ID from `npx wrangler versions list`. To restore that version:

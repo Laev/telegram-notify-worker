@@ -13,9 +13,10 @@ const script = await readFile(
 );
 const instances = [];
 
-function setup(overrides = {}) {
+function setup(overrides = {}, options = {}) {
   const mock = new MockAgent();
   mock.disableNetConnect();
+  const logs = [];
   const mf = new Miniflare(
     convertV4MiniflareOptions({
       modules: true,
@@ -43,11 +44,30 @@ function setup(overrides = {}) {
           duplex: 'half',
           dispatcher: mock,
         }),
+      handleStructuredLogs: (entry) => {
+        if (entry.message.includes('request_completed')) logs.push(entry);
+      },
+      ...options,
     }),
   );
   instances.push(mf);
   const upstream = mock.get('https://api.telegram.org');
-  return { mf, mock, upstream };
+  return { mf, mock, upstream, logs };
+}
+
+async function requestLogs(logs, count) {
+  const deadline = Date.now() + 2000;
+  while (logs.length < count && Date.now() < deadline)
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(logs.length, count);
+  // Local workerd renders console objects with unquoted keys and single-quoted strings.
+  return logs.map((entry) =>
+    JSON.parse(
+      entry.message
+        .replace(/(\w+):/g, '"$1":')
+        .replace(/'([^']*)'/g, (_, value) => JSON.stringify(value)),
+    ),
+  );
 }
 
 function success(upstream, inspect = () => {}, method = 'sendMessage') {
@@ -78,6 +98,127 @@ function notify(mf, body, headers = {}) {
 
 afterEach(async () => {
   await Promise.all(instances.splice(0).map((mf) => mf.dispose()));
+});
+
+test('call logs summarize each route without credentials or notification content', async () => {
+  const { mf, upstream, mock, logs } = setup();
+  const text = 'PRIVATE_NOTIFICATION_BODY';
+  success(upstream);
+  assert.equal((await notify(mf, { text })).status, 200);
+  success(upstream);
+  const parts = [key, 'PRIVATE_TITLE', 'PRIVATE_SUBTITLE', text];
+  assert.equal(
+    (
+      await mf.dispatchFetch(
+        'https://notify.example/' + parts.map(encodeURIComponent).join('/'),
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await mf.dispatchFetch(
+        'https://notify.example/sendMessage?key=PRIVATE_WRONG_KEY&text=' + text,
+      )
+    ).status,
+    401,
+  );
+  assert.equal(
+    (await mf.dispatchFetch('https://notify.example/health')).status,
+    200,
+  );
+  assert.equal(
+    (await mf.dispatchFetch('https://notify.example/api/PRIVATE_PATH')).status,
+    404,
+  );
+  success(upstream, () => {}, 'getMe');
+  assert.equal(
+    (
+      await mf.dispatchFetch('https://notify.example/api/getMe', {
+        headers: { authorization: `Bearer ${key}` },
+      })
+    ).status,
+    200,
+  );
+  const entries = await requestLogs(logs, 6);
+  assert.deepEqual(
+    entries.map(({ route, method, status, sent }) => ({
+      route,
+      method,
+      status,
+      sent,
+    })),
+    [
+      { route: 'send_message', method: 'POST', status: 200, sent: 1 },
+      { route: 'bark', method: 'GET', status: 200, sent: 1 },
+      { route: 'send_message', method: 'GET', status: 401, sent: 0 },
+      { route: 'health', method: 'GET', status: 200, sent: 0 },
+      { route: 'unknown', method: 'GET', status: 404, sent: 0 },
+      { route: 'get_me', method: 'GET', status: 200, sent: 0 },
+    ],
+  );
+  for (const entry of entries) {
+    assert.deepEqual(Object.keys(entry).sort(), [
+      'duration_ms',
+      'event',
+      'method',
+      'route',
+      'sent',
+      'status',
+    ]);
+    assert.equal(entry.event, 'request_completed');
+    assert.ok(Number.isFinite(entry.duration_ms) && entry.duration_ms >= 0);
+  }
+  const output = JSON.stringify(logs);
+  for (const secret of [
+    token,
+    key,
+    chat,
+    text,
+    'PRIVATE_TITLE',
+    'PRIVATE_SUBTITLE',
+    'PRIVATE_WRONG_KEY',
+    'PRIVATE_PATH',
+    'notify.example',
+  ])
+    assert.equal(output.includes(secret), false, secret);
+  mock.assertNoPendingInterceptors();
+});
+
+test('call logs preserve partial sends on rate limits and upstream failures', async () => {
+  for (const status of [429, 502]) {
+    const { mf, upstream, mock, logs } = setup();
+    success(upstream);
+    upstream
+      .intercept({ path: `/bot${token}/sendMessage`, method: 'POST' })
+      .reply(status, {
+        ok: false,
+        error_code: status,
+        description: 'PRIVATE_UPSTREAM_ERROR',
+      });
+    const response = await notify(mf, { text: 'x'.repeat(5000) });
+    assert.equal(response.status, status);
+    const [entry] = await requestLogs(logs, 1);
+    assert.equal(entry.status, status);
+    assert.equal(entry.sent, 1);
+    assert.equal(
+      JSON.stringify(logs).includes('PRIVATE_UPSTREAM_ERROR'),
+      false,
+    );
+    mock.assertNoPendingInterceptors();
+  }
+});
+
+test('call logs include validation and unexpected failures without error details', async () => {
+  const { mf, logs } = setup();
+  assert.equal((await notify(mf, { text: '' })).status, 400);
+  assert.equal((await requestLogs(logs, 1))[0].sent, 0);
+  const broken = setup({ SEND_LIMITER: 'missing_limiter' }, { ratelimits: {} });
+  assert.equal((await notify(broken.mf, { text: 'PRIVATE_BODY' })).status, 500);
+  const [entry] = await requestLogs(broken.logs, 1);
+  assert.equal(entry.status, 500);
+  assert.equal(entry.sent, 0);
+  assert.equal(JSON.stringify(entry).includes('PRIVATE_BODY'), false);
 });
 
 test('health works without secrets; sending fails closed', async () => {
