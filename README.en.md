@@ -47,6 +47,8 @@ If the setup does not show secret input fields, add them under your Worker's **S
 
 After deployment, note your Worker URL, such as `https://telegram-notify-worker.example.workers.dev`. `ALLOW_QUERY_AUTH` defaults to `true`; set it to `false` if you only use header authentication. A custom domain reachable from your notification clients is recommended.
 
+`ENABLE_LOGS` defaults to `false`, so application call logs are off. Set it to `true` to log route categories, methods, status codes, durations, and sent counts, without keys or message content. Persistent storage also requires Cloudflare Workers Logs (collection is enabled in the repository configuration). This switch does not control Cloudflare platform request metadata.
+
 ### 3. Send your first message
 
 Replace the domain and access key below:

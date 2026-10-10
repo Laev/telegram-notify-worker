@@ -100,8 +100,26 @@ afterEach(async () => {
   await Promise.all(instances.splice(0).map((mf) => mf.dispose()));
 });
 
+test('call logs are disabled unless explicitly enabled', async () => {
+  for (const value of [undefined, 'false', '', 'TRUE', '1']) {
+    const { mf, upstream, mock, logs } = setup(
+      value === undefined ? {} : { ENABLE_LOGS: value },
+    );
+    success(upstream);
+    assert.equal((await notify(mf, { text: 'hello' })).status, 200);
+    assert.equal((await notify(mf, { text: '' })).status, 400);
+    assert.equal(
+      (await mf.dispatchFetch('https://notify.example/health')).status,
+      200,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(logs.length, 0);
+    mock.assertNoPendingInterceptors();
+  }
+});
+
 test('call logs summarize each route without credentials or notification content', async () => {
-  const { mf, upstream, mock, logs } = setup();
+  const { mf, upstream, mock, logs } = setup({ ENABLE_LOGS: 'true' });
   const text = 'PRIVATE_NOTIFICATION_BODY';
   success(upstream);
   assert.equal((await notify(mf, { text })).status, 200);
@@ -187,7 +205,7 @@ test('call logs summarize each route without credentials or notification content
 
 test('call logs preserve partial sends on rate limits and upstream failures', async () => {
   for (const status of [429, 502]) {
-    const { mf, upstream, mock, logs } = setup();
+    const { mf, upstream, mock, logs } = setup({ ENABLE_LOGS: 'true' });
     success(upstream);
     upstream
       .intercept({ path: `/bot${token}/sendMessage`, method: 'POST' })
@@ -210,10 +228,13 @@ test('call logs preserve partial sends on rate limits and upstream failures', as
 });
 
 test('call logs include validation and unexpected failures without error details', async () => {
-  const { mf, logs } = setup();
+  const { mf, logs } = setup({ ENABLE_LOGS: 'true' });
   assert.equal((await notify(mf, { text: '' })).status, 400);
   assert.equal((await requestLogs(logs, 1))[0].sent, 0);
-  const broken = setup({ SEND_LIMITER: 'missing_limiter' }, { ratelimits: {} });
+  const broken = setup(
+    { ENABLE_LOGS: 'true', SEND_LIMITER: 'missing_limiter' },
+    { ratelimits: {} },
+  );
   assert.equal((await notify(broken.mf, { text: 'PRIVATE_BODY' })).status, 500);
   const [entry] = await requestLogs(broken.logs, 1);
   assert.equal(entry.status, 500);

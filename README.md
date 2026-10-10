@@ -47,6 +47,8 @@ openssl rand -hex 32
 
 部署完成后记下 Worker 地址，例如 `https://telegram-notify-worker.example.workers.dev`。默认 `ALLOW_QUERY_AUTH=true`；只使用请求头鉴权时可设为 `false`。建议绑定从发送端可访问的自定义域名。
 
+默认 `ENABLE_LOGS=false`，不输出应用调用日志；设为 `true` 后记录路由类别、方法、状态码、耗时和发送数量，不记录密钥或消息内容。持久化日志还需在 Cloudflare 启用 Workers Logs（仓库配置已启用采集能力）。此开关不控制 Cloudflare 平台自身的请求元数据。
+
 ### 3. 发送第一条消息
 
 替换下面的域名和访问密钥：

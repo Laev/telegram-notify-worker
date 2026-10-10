@@ -43,6 +43,9 @@
       "ALLOW_QUERY_AUTH": {
         "description": "true 允许 URL key 参数及 Bark 路径或请求体密钥；false 仅接受 Bearer 请求头。"
       },
+      "ENABLE_LOGS": {
+        "description": "默认 false；设为 true 开启脱敏调用日志。持久化日志还需启用 Cloudflare Workers Logs。"
+      },
       "SEND_LIMITER": {
         "description": "限制每个 Cloudflare 节点的请求和消息数量。"
       }

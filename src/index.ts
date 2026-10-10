@@ -327,24 +327,25 @@ export default {
     const started = performance.now();
     const stats: RequestStats = { route: 'unknown', sent: 0 };
     const response = await handleRequest(request, env, stats);
-    console.log({
-      event: 'request_completed',
-      route: stats.route,
-      method: [
-        'GET',
-        'POST',
-        'PUT',
-        'PATCH',
-        'DELETE',
-        'HEAD',
-        'OPTIONS',
-      ].includes(request.method)
-        ? request.method
-        : 'OTHER',
-      status: response.status,
-      duration_ms: Math.max(0, Math.round(performance.now() - started)),
-      sent: stats.sent,
-    });
+    if (String(env.ENABLE_LOGS) === 'true')
+      console.log({
+        event: 'request_completed',
+        route: stats.route,
+        method: [
+          'GET',
+          'POST',
+          'PUT',
+          'PATCH',
+          'DELETE',
+          'HEAD',
+          'OPTIONS',
+        ].includes(request.method)
+          ? request.method
+          : 'OTHER',
+        status: response.status,
+        duration_ms: Math.max(0, Math.round(performance.now() - started)),
+        sent: stats.sent,
+      });
     return response;
   },
 } satisfies ExportedHandler<Env>;

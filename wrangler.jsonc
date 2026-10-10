@@ -6,6 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "ALLOW_QUERY_AUTH": "true",
+    "ENABLE_LOGS": "false",
   },
   "ratelimits": [
     {
