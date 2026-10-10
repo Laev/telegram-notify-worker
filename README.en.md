@@ -10,6 +10,7 @@ Deploy your own Telegram notification endpoint on Cloudflare Workers. Configure 
 
 - **Quick deployment**: Use the official Cloudflare deploy button without a local development environment.
 - **Key authentication**: Use a Bearer header, or a separate access key for GET notification URLs.
+- **Bark compatibility**: Reuse common push paths and JSON or form requests, with delivery through Telegram.
 - **Fixed recipient**: Store the bot token and chat ID as Worker secrets.
 - **Long messages**: Split text automatically while keeping compound emoji intact.
 - **Lightweight**: No server, database, or runtime npm dependencies.
@@ -64,6 +65,20 @@ Clients that only support GET notification URLs can use this format. URL-encode 
 ```text
 https://notify.example.com/sendMessage?key=YOUR_NOTIFY_KEY&text=Hello%20world
 ```
+
+## Bark compatibility
+
+Existing Bark push scripts can use the following URLs. Replace the domain with your Worker address and the original Bark key with `NOTIFY_KEY`. URL-encode each title and message segment separately.
+
+```text
+https://notify.example.com/YOUR_NOTIFY_KEY/body
+https://notify.example.com/YOUR_NOTIFY_KEY/title/body
+https://notify.example.com/YOUR_NOTIFY_KEY/title/subtitle/body
+```
+
+`POST /YOUR_NOTIFY_KEY` and `POST /push` also accept JSON, URL-encoded forms, and multipart text fields. See [parameters and examples](docs/api.en.md#bark-compatibility).
+
+When `ALLOW_QUERY_AUTH=false`, path keys and `device_key` are disabled; supply a Bearer header. iOS options such as sound, icon, group, badge, and automatic copying are ignored. `url` is appended to the message text.
 
 ## Documentation
 

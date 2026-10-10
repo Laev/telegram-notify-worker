@@ -56,3 +56,39 @@ Only plain text is supported. The title and text together may contain up to 1600
 The `/api/*` routes provide a limited notification interface. They expose `getMe` and `sendMessage`, use a fixed recipient, and return a segment count for successful sends. File uploads, arbitrary bot token paths, webhook management, and formatted text are not implemented.
 
 When Telegram returns a rate limit response, the Worker preserves `Retry-After` if provided. Sending is not retried automatically because a message may have arrived before the connection failed. Do not resend an entire long message after a partial delivery.
+
+## Bark compatibility
+
+Common Bark sender HTTP formats are supported, with delivery to this instance's fixed Telegram chat. Replace the original Bark key with `NOTIFY_KEY`.
+
+| Route                              | Methods   | Content source                        |
+| ---------------------------------- | --------- | ------------------------------------- |
+| `/{key}/{body}`                    | GET, POST | Message path segment                  |
+| `/{key}/{title}/{body}`            | GET, POST | Title and message path segments       |
+| `/{key}/{title}/{subtitle}/{body}` | GET, POST | Title, subtitle, and message segments |
+| `/{key}`                           | GET, POST | Query parameters or request body      |
+| `/push`                            | POST      | `device_key` field or Bearer header   |
+
+POST accepts JSON, `application/x-www-form-urlencoded`, and `multipart/form-data` text fields. Bodies remain limited to 64 KiB. File uploads and the batch `device_keys` field return 400.
+
+```sh
+curl 'https://notify.example.com/YOUR_NOTIFY_KEY/Hello%20world'
+
+curl https://notify.example.com/YOUR_NOTIFY_KEY \
+  --data-urlencode 'title=Task notification' \
+  --data-urlencode 'body=Task completed'
+
+curl https://notify.example.com/push \
+  -H 'Content-Type: application/json' \
+  --data '{"device_key":"YOUR_NOTIFY_KEY","title":"Task notification","subtitle":"Result","body":"Task completed","url":"https://example.com/task"}'
+```
+
+`title`, `subtitle`, and `body` are joined in order with newlines. `url` accepts an HTTP/HTTPS address and is appended to the message text. The combined content still follows the 16000 UTF-16 code unit limit, existing rate limits, and long message splitting. The `chat_id`, topic, and silent delivery extension fields use the validation described above.
+
+Path fields take precedence over other fields. For JSON requests, query parameters take precedence over body fields. For URL-encoded and multipart forms, body fields take precedence over query parameters. A bare `+` in a message path segment becomes a space, as in Bark; encode a literal plus as `%2B` and a slash as `%2F`. Each field is decoded once.
+
+The Bearer header takes precedence. An invalid header never falls back to a path or body key. When `ALLOW_QUERY_AUTH=false`, path keys and `device_key` are disabled; use Bearer authentication. Path and query keys may appear in client or proxy logs, so keep them private.
+
+Success uses the Bark response format: `{"code":200,"message":"success","timestamp":...,"sent":1}`. Failures retain their HTTP status, with a matching `code`; `sent` and `Retry-After` preserve partial delivery counts and retry delays.
+
+iOS display fields such as `sound`, `icon`, `group`, `badge`, `level`, `volume`, `automaticallyCopy`, `copy`, and `isArchive` are ignored. Bark App device registration, APNs delivery, and encrypted message decryption are not implemented.

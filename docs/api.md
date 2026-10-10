@@ -56,3 +56,39 @@ curl https://notify.example.com/sendMessage \
 `/api/*` 是适用于通知的受限接口，并非完整 Bot API 的透明替代：只开放 `getMe` 和 `sendMessage`，固定接收人，成功发送只返回分段计数。文件上传、任意 Bot Token 路径、Webhook 管理和格式化文本均未实现。
 
 Telegram 返回 429 时，会保留 `Retry-After`。服务不会自动重试发送，因为断线前消息可能已经送达。长消息部分成功后，不应直接重发整条。
+
+## Bark 兼容
+
+兼容 Bark 发送端的常用 HTTP 推送格式，消息仍发送到本实例固定的 Telegram 聊天。原 Bark key 需要替换为 `NOTIFY_KEY`。
+
+| 路由                               | 方法      | 内容来源                          |
+| ---------------------------------- | --------- | --------------------------------- |
+| `/{key}/{body}`                    | GET、POST | 路径正文                          |
+| `/{key}/{title}/{body}`            | GET、POST | 路径标题、正文                    |
+| `/{key}/{title}/{subtitle}/{body}` | GET、POST | 路径标题、副标题、正文            |
+| `/{key}`                           | GET、POST | 查询参数或请求体                  |
+| `/push`                            | POST      | `device_key` 字段或 Bearer 请求头 |
+
+POST 支持 JSON、`application/x-www-form-urlencoded` 和 `multipart/form-data` 文本字段。请求体仍限制为 64 KiB，文件上传和 `device_keys` 批量设备字段返回 400。
+
+```sh
+curl 'https://notify.example.com/YOUR_NOTIFY_KEY/Hello%20world'
+
+curl https://notify.example.com/YOUR_NOTIFY_KEY \
+  --data-urlencode 'title=任务通知' \
+  --data-urlencode 'body=任务已完成'
+
+curl https://notify.example.com/push \
+  -H 'Content-Type: application/json' \
+  --data '{"device_key":"YOUR_NOTIFY_KEY","title":"任务通知","subtitle":"执行结果","body":"任务已完成","url":"https://example.com/task"}'
+```
+
+`title`、`subtitle`、`body` 按顺序以换行连接。`url` 接受 HTTP/HTTPS 地址并附在正文末尾。标题与正文合计仍遵守 16000 个 UTF-16 单元限制，并复用既有限流和长消息分段逻辑。`chat_id`、话题和静默通知扩展字段也遵守上文的校验。
+
+路径字段优先于其他字段。JSON 请求中查询参数优先于请求体；URL 编码表单与 multipart 请求中请求体优先于查询参数。路径正文中的裸 `+` 按 Bark 约定解析为空格，字面加号应写为 `%2B`，斜杠应写为 `%2F`；每个字段只解码一次。
+
+Bearer 请求头优先，错误的请求头不会回退到路径或正文密钥。`ALLOW_QUERY_AUTH=false` 时，路径 key 和 `device_key` 均停用，只接受 Bearer。路径和查询参数密钥可能进入客户端或代理日志，请妥善保护。
+
+成功返回 Bark 风格的 `{"code":200,"message":"success","timestamp":...,"sent":1}`。失败保留真实 HTTP 状态码，`code` 与其一致；`sent` 和 `Retry-After` 保留已发送分段数与重试等待时间。
+
+`sound`、`icon`、`group`、`badge`、`level`、`volume`、`automaticallyCopy`、`copy`、`isArchive` 等 iOS 展示参数会被忽略。Bark App 的设备注册、APNs 推送及加密消息解密未实现。

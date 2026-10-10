@@ -10,6 +10,7 @@
 
 - **快速部署**：使用 Cloudflare 官方部署按钮，无需本地开发环境。
 - **密钥鉴权**：支持 Bearer 请求头，或用于 GET 推送的独立访问密钥。
+- **Bark 兼容**：沿用常用推送路径和 JSON、表单格式，消息发送到 Telegram。
 - **固定接收人**：Bot Token 与 Chat ID 保存在 Worker Secret 中。
 - **长消息分段**：自动拆分文本，保持复合 emoji 完整。
 - **轻量运行**：无需服务器或数据库，没有运行时 npm 依赖。
@@ -64,6 +65,20 @@ curl https://notify.example.com/sendMessage \
 ```text
 https://notify.example.com/sendMessage?key=YOUR_NOTIFY_KEY&text=Hello%20world
 ```
+
+## Bark 兼容
+
+原有 Bark 推送脚本可使用以下地址，将域名换成 Worker 地址，原 Bark key 换成 `NOTIFY_KEY`。标题和正文分别进行 URL 编码。
+
+```text
+https://notify.example.com/YOUR_NOTIFY_KEY/正文
+https://notify.example.com/YOUR_NOTIFY_KEY/标题/正文
+https://notify.example.com/YOUR_NOTIFY_KEY/标题/副标题/正文
+```
+
+也支持 `POST /YOUR_NOTIFY_KEY` 和 `POST /push` 的 JSON、URL 编码表单及 multipart 文本字段。[参数与示例](docs/api.md#bark-兼容)。
+
+`ALLOW_QUERY_AUTH=false` 时，路径密钥和 `device_key` 均停用，需要提供 Bearer 请求头。音效、图标、分组、角标和自动复制等 iOS 参数被忽略；`url` 会附在正文末尾。
 
 ## 文档
 

@@ -44,20 +44,65 @@ export async function readBody(request: Request, limit = 64 * 1024) {
   }
 }
 
-export async function readFields(request: Request, url: URL) {
-  if (request.method === 'GET') {
-    return Object.fromEntries(url.searchParams) as Record<string, unknown>;
+export function readParameters(
+  params: URLSearchParams,
+  uniqueFields: string[] = [],
+) {
+  for (const field of uniqueFields) {
+    if (params.getAll(field).length > 1) {
+      throw new HttpError(400, 'Duplicate credential field');
+    }
   }
-  const type = request.headers.get('content-type')?.split(';')[0].trim();
-  if (
-    type !== 'application/json' &&
-    type !== 'application/x-www-form-urlencoded'
-  ) {
-    throw new HttpError(415, 'Use JSON or form-urlencoded');
+  return Object.fromEntries(params) as Record<string, unknown>;
+}
+
+export async function readFields(
+  request: Request,
+  url: URL,
+  options: {
+    uniqueFields?: string[];
+    allowEmpty?: boolean;
+    multipart?: boolean;
+  } = {},
+) {
+  const uniqueFields = options.uniqueFields ?? [];
+  if (request.method === 'GET') {
+    return readParameters(url.searchParams, uniqueFields);
+  }
+  const contentType = request.headers.get('content-type') ?? '';
+  const type = contentType.split(';')[0].trim();
+  const supported =
+    type === 'application/json' ||
+    type === 'application/x-www-form-urlencoded' ||
+    (options.multipart && type === 'multipart/form-data');
+  const formatError = options.multipart
+    ? 'Use JSON, form-urlencoded or multipart fields'
+    : 'Use JSON or form-urlencoded';
+  if (!supported && !options.allowEmpty) {
+    throw new HttpError(415, formatError);
   }
   const body = await readBody(request);
+  if (!body && options.allowEmpty) return {};
+  if (!supported) throw new HttpError(415, formatError);
   if (type === 'application/x-www-form-urlencoded') {
-    return Object.fromEntries(new URLSearchParams(body));
+    return readParameters(new URLSearchParams(body), uniqueFields);
+  }
+  if (type === 'multipart/form-data') {
+    let form: FormData;
+    try {
+      form = await new Response(body, {
+        headers: { 'Content-Type': contentType },
+      }).formData();
+    } catch {
+      throw new HttpError(400, 'Invalid multipart form');
+    }
+    const params = new URLSearchParams();
+    for (const [name, value] of form) {
+      if (typeof value !== 'string')
+        throw new HttpError(400, 'File uploads are not supported');
+      params.append(name, value);
+    }
+    return readParameters(params, uniqueFields);
   }
   try {
     const value: unknown = JSON.parse(body);

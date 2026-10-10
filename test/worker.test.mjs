@@ -392,3 +392,288 @@ test('rate limiter caps outgoing messages', async () => {
     sent: 0,
   });
 });
+
+function barkPost(mf, path, fields, form = false, headers = {}) {
+  return mf.dispatchFetch(`https://notify.example${path}`, {
+    method: 'POST',
+    headers: {
+      'content-type': form
+        ? 'application/x-www-form-urlencoded'
+        : 'application/json',
+      ...headers,
+    },
+    body: form
+      ? new URLSearchParams(fields).toString()
+      : JSON.stringify(fields),
+  });
+}
+
+test('Bark GET paths support body, title and subtitle with encoded characters', async () => {
+  const body = '中文 / + ? % %2F 😀';
+  for (const parts of [[body], ['标题', body], ['标题', '副标题', body]]) {
+    const { mf, upstream, mock } = setup();
+    success(upstream, (data, options) => {
+      assert.equal(data.text, parts.join('\n'));
+      assert.equal(data.chat_id, chat);
+      assert.equal(options.body.includes(key), false);
+    });
+    const path = [key, ...parts].map(encodeURIComponent).join('/');
+    const response = await mf.dispatchFetch(`https://notify.example/${path}`);
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.code, 200);
+    assert.equal(result.message, 'success');
+    assert.equal(result.sent, 1);
+    assert.ok(Number.isInteger(result.timestamp));
+    mock.assertNoPendingInterceptors();
+  }
+});
+
+test('Bark path text wins over query fields and preserves Bark plus decoding', async () => {
+  const { mf, upstream } = setup();
+  success(upstream, (data) => assert.equal(data.text, 'A B+C\nURL body'));
+  assert.equal(
+    (
+      await mf.dispatchFetch(
+        `https://notify.example/${key}/A+B%2BC/URL%20body?title=wrong&body=wrong`,
+      )
+    ).status,
+    200,
+  );
+});
+
+test('Bark key-only URLs accept GET fields and bodyless POST paths', async () => {
+  for (const method of ['GET', 'POST']) {
+    const { mf, upstream } = setup();
+    success(upstream, (data) => assert.equal(data.text, '标题\n内容 + 中文'));
+    const params = new URLSearchParams({ title: '标题', body: '内容 + 中文' });
+    const response = await mf.dispatchFetch(
+      `https://notify.example/${key}?${params}`,
+      { method },
+    );
+    assert.equal(response.status, 200);
+  }
+});
+
+test('Bark POST supports JSON and forms on key paths and push', async () => {
+  for (const path of [`/${key}`, '/push']) {
+    for (const form of [false, true]) {
+      const { mf, upstream, mock } = setup();
+      success(upstream, (data, options) => {
+        assert.equal(
+          data.text,
+          'Title\nSubtitle\nText\nhttps://example.com/task',
+        );
+        assert.equal(data.chat_id, chat);
+        assert.equal(options.body.includes(key), false);
+        assert.equal(data.sound, undefined);
+      });
+      const response = await barkPost(
+        mf,
+        path,
+        {
+          device_key: key,
+          title: 'Title',
+          subtitle: 'Subtitle',
+          body: 'Text',
+          url: 'https://example.com/task',
+          sound: 'minuet',
+          icon: 'https://example.com/icon',
+          group: 'tasks',
+          badge: 1,
+          automaticallyCopy: 1,
+          copy: 'copied text',
+        },
+        form,
+      );
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).code, 200);
+      mock.assertNoPendingInterceptors();
+    }
+  }
+});
+
+test('Bark POST path fields take precedence over the request body', async () => {
+  const { mf, upstream } = setup();
+  success(upstream, (data) => assert.equal(data.text, 'Path title\nPath body'));
+  assert.equal(
+    (
+      await barkPost(mf, `/${key}/Path%20title/Path%20body`, {
+        device_key: 'wrong',
+        title: 'wrong',
+        body: 'wrong',
+      })
+    ).status,
+    200,
+  );
+});
+
+test('Bark rejects invalid credentials and never falls back from an invalid header', async () => {
+  const { mf } = setup();
+  for (const [path, fields, headers] of [
+    ['/push', { body: 'hello' }, {}],
+    ['/push', { body: 'hello', device_key: 'wrong' }, {}],
+    [`/${key}/hello`, {}, { authorization: 'Bearer wrong' }],
+    [
+      '/push',
+      { body: 'hello', device_key: key },
+      { authorization: 'Basic wrong' },
+    ],
+  ]) {
+    const response = await barkPost(mf, path, fields, false, headers);
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).code, 401);
+  }
+});
+
+test('header-only mode disables both Bark URL and body keys', async () => {
+  const { mf, upstream } = setup({ ALLOW_QUERY_AUTH: 'false' });
+  assert.equal(
+    (await mf.dispatchFetch(`https://notify.example/${key}/hello`)).status,
+    401,
+  );
+  assert.equal(
+    (await barkPost(mf, '/push', { device_key: key, body: 'hello' })).status,
+    401,
+  );
+  success(upstream);
+  assert.equal(
+    (
+      await barkPost(mf, '/push', { body: 'hello' }, false, {
+        authorization: `Bearer ${key}`,
+      })
+    ).status,
+    200,
+  );
+});
+
+test('Bark rejects duplicate credentials, batch recipients and invalid fields', async () => {
+  const { mf } = setup();
+  for (const fields of [
+    { device_key: key, device_keys: [key], body: 'hello' },
+    { device_key: key, chat_id: '999', body: 'hello' },
+    { device_key: key, body: 'hello', subtitle: 123 },
+    { device_key: key, body: 'hello', url: 'javascript:alert(1)' },
+    { device_key: key, body: '', url: 'https://example.com' },
+  ])
+    assert.equal((await barkPost(mf, '/push', fields)).status, 400);
+  const response = await mf.dispatchFetch('https://notify.example/push', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: `device_key=${key}&device_key=${key}&body=hello`,
+  });
+  assert.equal(response.status, 400);
+});
+
+test('Bark keeps parsing and message limits bounded', async () => {
+  const { mf } = setup();
+  assert.equal(
+    (await mf.dispatchFetch(`https://notify.example/${key}/bad%ZZ`)).status,
+    400,
+  );
+  assert.equal(
+    (await barkPost(mf, '/push', { device_key: key, body: 'x'.repeat(16001) }))
+      .status,
+    413,
+  );
+  assert.equal(
+    (await barkPost(mf, '/push', { device_key: key, body: 'x'.repeat(70000) }))
+      .status,
+    413,
+  );
+  const response = await mf.dispatchFetch('https://notify.example/push');
+  assert.equal(
+    (
+      await barkPost(mf, '/push', {
+        device_key: key,
+        title: 'x'.repeat(8000),
+        subtitle: 'x'.repeat(4000),
+        body: 'x'.repeat(3999),
+        url: 'https://example.com',
+      })
+    ).status,
+    413,
+  );
+  assert.equal(response.status, 405);
+  assert.equal(response.headers.get('allow'), 'POST');
+  assert.equal((await response.json()).code, 405);
+});
+
+test('Bark errors retain retry delay and partial delivery without exposing secrets', async () => {
+  const { mf, upstream } = setup();
+  success(upstream);
+  upstream
+    .intercept({ path: `/bot${token}/sendMessage`, method: 'POST' })
+    .reply(429, {
+      ok: false,
+      description: token + key,
+      parameters: { retry_after: 17 },
+    });
+  const response = await barkPost(mf, '/push', {
+    device_key: key,
+    body: 'x'.repeat(5000),
+  });
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('retry-after'), '17');
+  const result = await response.json();
+  assert.equal(result.code, 429);
+  assert.equal(result.sent, 1);
+  assert.equal(JSON.stringify(result).includes(token), false);
+  assert.equal(JSON.stringify(result).includes(key), false);
+});
+
+test('Bark multipart fields work with bounded parsing; native routes stay unchanged', async () => {
+  const { mf, upstream } = setup();
+  async function submit(path, body, headers = {}) {
+    const request = new Request(`https://notify.example${path}`, {
+      method: 'POST',
+      body,
+    });
+    return mf.dispatchFetch(request.url, {
+      method: request.method,
+      headers: { ...Object.fromEntries(request.headers), ...headers },
+      body: await request.text(),
+    });
+  }
+  success(upstream, (data) => assert.equal(data.text, '标题\n内容'));
+  const fields = new FormData();
+  fields.set('device_key', key);
+  fields.set('title', '标题');
+  fields.set('body', '内容');
+  assert.equal((await submit('/push', fields)).status, 200);
+  fields.append('device_key', key);
+  assert.equal((await submit('/push', fields)).status, 400);
+  assert.equal(
+    (await submit('/sendMessage', fields, { authorization: `Bearer ${key}` }))
+      .status,
+    415,
+  );
+  fields.delete('device_key');
+  fields.set('device_key', key);
+  fields.set('file', new Blob(['file contents']), 'upload.txt');
+  assert.equal((await submit('/push', fields)).status, 400);
+  const malformed = await mf.dispatchFetch('https://notify.example/push', {
+    method: 'POST',
+    headers: { 'content-type': 'multipart/form-data; boundary=missing' },
+    body: 'not a multipart body',
+  });
+  assert.equal(malformed.status, 400);
+});
+
+test('Bark and native routes share the authenticated request rate limit', async () => {
+  const { mf, upstream } = setup();
+  for (let i = 0; i < 20; i++) {
+    success(upstream);
+    const response =
+      i % 2 === 0
+        ? await mf.dispatchFetch(`https://notify.example/${key}/hello`)
+        : await notify(mf, { text: 'hello' });
+    assert.equal(response.status, 200);
+  }
+  const response = await mf.dispatchFetch(
+    `https://notify.example/${key}/hello`,
+  );
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('retry-after'), '60');
+  assert.equal((await response.json()).message, 'Request rate limit exceeded');
+});

@@ -41,7 +41,7 @@
         "description": "独立随机访问密钥，32–512 字符且不含空白。可用 openssl rand -hex 32 生成。"
       },
       "ALLOW_QUERY_AUTH": {
-        "description": "true 允许 GET 地址使用 key 参数；false 仅接受 Bearer 请求头。"
+        "description": "true 允许 URL key 参数及 Bark 路径或请求体密钥；false 仅接受 Bearer 请求头。"
       },
       "SEND_LIMITER": {
         "description": "限制每个 Cloudflare 节点的请求和消息数量。"

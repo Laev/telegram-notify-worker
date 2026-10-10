@@ -1,13 +1,26 @@
 import { HttpError, json, readBody, readFields } from './http';
+import {
+  barkResponse,
+  matchBarkRoute,
+  normalizeBarkFields,
+  readBarkFields,
+} from './bark';
 
 const MAX_TEXT_LENGTH = 16_000;
 const MESSAGE_LENGTH = 4096;
 
-async function authenticate(request: Request, url: URL, env: Env) {
+async function authenticate(
+  request: Request,
+  url: URL,
+  env: Env,
+  barkKey?: unknown,
+) {
   const authorization = request.headers.get('authorization');
   let key = '';
   if (authorization !== null) {
     key = /^Bearer ([^\s]+)$/i.exec(authorization)?.[1] ?? '';
+  } else if (env.ALLOW_QUERY_AUTH === 'true' && typeof barkKey === 'string') {
+    key = barkKey;
   } else if (
     env.ALLOW_QUERY_AUTH === 'true' &&
     request.method === 'GET' &&
@@ -38,6 +51,14 @@ function validateConfig(env: Env) {
   ) {
     throw new HttpError(503, 'Notification service is not configured');
   }
+}
+
+async function checkRequestLimit(env: Env) {
+  const { success } = await env.SEND_LIMITER.limit({ key: 'requests' });
+  if (!success)
+    return json({ ok: false, error: 'Request rate limit exceeded' }, 429, {
+      'Retry-After': '60',
+    });
 }
 
 function getText(fields: Record<string, unknown>) {
@@ -212,9 +233,28 @@ async function sendMessages(fields: Record<string, unknown>, env: Env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    let bark = false;
     try {
       if (url.pathname === '/health' && request.method === 'GET') {
         return json({ ok: true, service: 'telegram-notify-worker' });
+      }
+      const barkRoute = matchBarkRoute(url.pathname);
+      if (barkRoute) {
+        bark = true;
+        if (!barkRoute.methods.includes(request.method)) {
+          return barkResponse(
+            json({ ok: false, error: 'Method not allowed' }, 405, {
+              Allow: barkRoute.methods.join(', '),
+            }),
+          );
+        }
+        validateConfig(env);
+        const fields = await readBarkFields(request, url, barkRoute.parts);
+        await authenticate(request, url, env, fields.device_key);
+        const limited = await checkRequestLimit(env);
+        return await barkResponse(
+          limited ?? (await sendMessages(normalizeBarkFields(fields), env)),
+        );
       }
       if (
         !['/sendMessage', '/api/sendMessage', '/api/getMe'].includes(
@@ -232,11 +272,8 @@ export default {
       }
       validateConfig(env);
       await authenticate(request, url, env);
-      const { success } = await env.SEND_LIMITER.limit({ key: 'requests' });
-      if (!success)
-        return json({ ok: false, error: 'Request rate limit exceeded' }, 429, {
-          'Retry-After': '60',
-        });
+      const limited = await checkRequestLimit(env);
+      if (limited) return limited;
       if (url.pathname === '/api/getMe') {
         const result = await callTelegram('getMe', {}, env);
         if (result.error)
@@ -252,10 +289,15 @@ export default {
       return await sendMessages(await readFields(request, url), env);
     } catch (error) {
       if (error instanceof HttpError) {
-        return json({ ok: false, error: error.message }, error.status);
+        const response = json(
+          { ok: false, error: error.message },
+          error.status,
+        );
+        return bark ? barkResponse(response) : response;
       }
       console.error(JSON.stringify({ event: 'request_failed' }));
-      return json({ ok: false, error: 'Internal server error' }, 500);
+      const response = json({ ok: false, error: 'Internal server error' }, 500);
+      return bark ? barkResponse(response) : response;
     }
   },
 } satisfies ExportedHandler<Env>;
