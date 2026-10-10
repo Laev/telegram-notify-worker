@@ -1,4 +1,4 @@
-import { HttpError, json, readFields, readParameters } from './http';
+import { HttpError, readFields, readParameters } from './http';
 
 export function matchBarkRoute(pathname: string) {
   if (pathname === '/push') return { parts: [] as string[], methods: ['POST'] };
@@ -87,14 +87,13 @@ export function normalizeBarkFields(fields: Record<string, unknown>) {
 export async function barkResponse(response: Response) {
   const result: { ok: boolean; error?: string; sent?: number } =
     await response.json();
-  return json(
+  return Response.json(
     {
       code: response.status,
       message: result.ok ? 'success' : (result.error ?? 'Request failed'),
       timestamp: Math.floor(Date.now() / 1000),
       ...(result.sent !== undefined ? { sent: result.sent } : {}),
     },
-    response.status,
-    Object.fromEntries(response.headers),
+    { status: response.status, headers: response.headers },
   );
 }

@@ -420,6 +420,8 @@ test('Bark GET paths support body, title and subtitle with encoded characters', 
     const path = [key, ...parts].map(encodeURIComponent).join('/');
     const response = await mf.dispatchFetch(`https://notify.example/${path}`);
     assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
     const result = await response.json();
     assert.equal(result.code, 200);
     assert.equal(result.message, 'success');
